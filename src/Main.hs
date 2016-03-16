@@ -13,17 +13,11 @@ type Solution = Float
 -- a function that given a certain solution,
 -- determines how close the chromesome (represented in binary)
 -- comes to achieving this goal solution
-data Score = SolutionFound Float | Fitness Float
-  deriving Show
-
 fitness :: Solution -> Binary -> Float
-fitness s b = let diff = s - C.eval b
-              in 1/diff
+fitness s b = 1/(s - C.eval b)
 
-
-fitP :: (Score, Float, Chromosome) -> Bool
-fitP (SolutionFound _, _, _) = True
-fitP _ = False
+isSolution :: Solution -> Binary -> Bool
+isSolution s b = abs (s - C.eval b) < 0.01
 
 -- given a fitness function, a desired solution,
 -- and a list of possible chromosomes (actually just binary)
@@ -53,19 +47,19 @@ findAtLeast fs f = go fs f 0
 crossoverRate :: Float
 crossoverRate = 0.7
 
-crossover :: (Binary, Binary) -> IO (Binary, Binary)
-crossover bs@(Binary b1, Binary _) = do
+crossover :: Binary -> Binary -> IO (Binary, Binary)
+crossover b1@(Binary b) b2 = do
   crossChance <- randomRIO (0.0, 1.0)
 
   if crossChance < crossoverRate then do
-    crossPoint <- randomRIO (0, length b1-1)
-    return $ crossAt bs crossPoint
-    else return bs
+    crossPoint <- randomRIO (0, length b-1)
+    return $ crossAt b1 b2 crossPoint
+    else return (b1, b2)
 
-crossAt :: (Binary, Binary) -> Int -> (Binary, Binary)
-crossAt (Binary b1, Binary b2) point = let b1' = take point b1 ++ drop point b2
-                                           b2' = take point b2 ++ drop point b1
-                                       in (Binary b1', Binary b2')
+crossAt :: Binary -> Binary -> Int -> (Binary, Binary)
+crossAt (Binary b1) (Binary b2) point = let b1' = take point b1 ++ drop point b2
+                                            b2' = take point b2 ++ drop point b1
+                                        in (Binary b1', Binary b2')
 
 mutationRate :: Float
 mutationRate = 0.001
@@ -82,16 +76,41 @@ mutate (Binary b) = Binary <$>
 createGeneration :: Int -> Int -> IO [Binary]
 createGeneration size binLen = replicateM size $ randomBinary binLen
 
--- TODO: "mate" chromosomes together by
--- 1. pick two using roulette wheele
--- 2. cross them over eachother
--- 3. mutate both of the offspring
--- 4. repeat 1-3 untill a new pop of N is arived at.
---    This is the next generation
+mate :: [Binary] -> IO (Binary, Binary)
+mate gen = do
+  partner1 <- rouletteWheel solution gen
+  partner2 <- rouletteWheel solution gen
+  (child1, child2) <- crossover partner1 partner2
+  child1' <- mutate child1
+  child2' <- mutate child2
+  return (child1', child2')
+
+-- keep the population mating until a new generation
+-- of children has been made
+reproduce :: [Binary] -> [Binary] -> IO [Binary]
+reproduce gen children =
+  if length children >= length gen then
+    return children
+  else do
+    (child1, child2) <- mate gen
+    reproduce gen (child1:child2:children)
+
+solution :: Float
+solution = 30.5
+
 main :: IO ()
 main = do
   let popSize = 1000
-      chromosomeLength = 52
-      solution = 30
-  generation <- createGeneration popSize chromosomeLength
-  print =<< rouletteWheel solution generation
+  generation <- createGeneration popSize 52
+  answer <- loop generation popSize
+  let ansStr = C.showChromosome $ C.decodeChromosome answer
+  putStrLn $ ansStr ++ " = " ++ show solution
+
+loop :: [Binary] -> Int -> IO Binary
+loop gen size =
+  let answers = filter (isSolution solution) gen
+  in if not $ null answers then
+       return $ head answers
+  else do
+       newGen <- reproduce [] gen
+       loop newGen size

@@ -1,4 +1,4 @@
-module Chromosome (Chromosome, decodeChromosome, eval) where
+module Chromosome (showChromosome, Chromosome, decodeChromosome, eval) where
 
 import Binary
 
@@ -6,13 +6,24 @@ import Data.List.Split (chunksOf)
 import Data.Maybe (fromJust)
 
 data Operator = Add | Sub | Mult | Div
-  deriving Show
+
+instance Show Operator where
+  show Add = " + "
+  show Sub = " - "
+  show Mult = " * "
+  show Div = " / "
 
 data Gene = Number Float
           | Op Operator
-  deriving Show
+
+instance Show Gene where
+  show (Number n) = show n
+  show (Op o) = show o
 
 type Chromosome = [Gene]
+
+showChromosome :: Chromosome -> String
+showChromosome = concatMap show
 
 encodeGene :: Gene -> Binary
 encodeGene (Number n) = if n <= 9 then pad (toBinary $ truncate n) 4 Zero
@@ -52,6 +63,13 @@ decodeChromosome (Binary b) = let cs = map (decodeGene . Binary) $ chunksOf 4 b
 -- looks for sequences of genes of the form 'X + Y * Z / W'
 -- ignores any malformed sequenecs up till either a correctly
 -- formed sequence is discovered or there is nothing left
+-- BUG: recodes the result of each operation back as a number
+--      which (un)conveniently can only represent whole numbers.
+--      this means 5/2 gets stored as nothing becasue it isnt 2 or 3
+
+-- should instead fold chromosome with float accumulator, reducing
+-- the remaining chromosome until only acc is left leaving the
+-- true result
 evalChromosome :: Chromosome -> Float
 evalChromosome [] = 1/0
 evalChromosome [Number n] = n
